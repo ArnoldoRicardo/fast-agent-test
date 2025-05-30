@@ -103,6 +103,42 @@ async def collect_historical_data(days=30, interval="daily"):
             
             logger.info(f"Intervalo {interval_idx+1}/{total_intervals} para {symbol}: {interval_start_str} a {interval_end_str}")
             
+            # Verificar si ya tenemos datos para este intervalo en la base de datos
+            db_gen = get_db()
+            db = next(db_gen)
+            try:
+                # Buscar la criptomoneda
+                crypto = db.query(CryptoCurrency).filter_by(symbol=symbol.upper()).first()
+                
+                if crypto:
+                    # Verificar si tenemos datos para este intervalo
+                    start_datetime = datetime.fromtimestamp(from_timestamp / 1000)
+                    end_datetime = datetime.fromtimestamp(to_timestamp / 1000)
+                    
+                    # Contar cuántos registros tenemos en este intervalo
+                    existing_records_count = (
+                        db.query(CryptoPrice)
+                        .filter(
+                            CryptoPrice.cryptocurrency_id == crypto.id,
+                            CryptoPrice.timestamp >= start_datetime,
+                            CryptoPrice.timestamp <= end_datetime
+                        )
+                        .count()
+                    )
+                    
+                    # Si tenemos más de 80% de los datos esperados (aproximadamente un registro por día),
+                    # podemos saltarnos este intervalo
+                    expected_records = (end_datetime - start_datetime).days
+                    if expected_records > 0 and existing_records_count >= expected_records * 0.8:
+                        logger.info(f"Ya tenemos suficientes datos ({existing_records_count}/{expected_records}) para {symbol} en el intervalo {interval_idx+1}. Saltando...")
+                        continue
+                    else:
+                        logger.info(f"Datos incompletos ({existing_records_count}/{expected_records}) para {symbol} en el intervalo {interval_idx+1}. Recolectando...")
+            except Exception as e:
+                logger.error(f"Error al verificar datos existentes: {str(e)}")
+            finally:
+                db.close()
+            
             try:
                 # Usar el colector para obtener datos históricos para este intervalo
                 result = await collector.collect_historical(symbol, from_timestamp, to_timestamp)

@@ -4,9 +4,10 @@ Colector para datos de criptomonedas utilizando la API de CoinGecko.
 
 import asyncio
 import aiohttp
+import logging
 import time
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import Dict, Any, List, Optional
 
 import requests
 import requests_cache
@@ -84,7 +85,7 @@ class CryptoCollector(BaseCollector):
                 "per_page": len(symbols),
                 "page": 1,
                 "sparkline": False,
-                "price_change_percentage": "24h"
+                "price_change_percentage": "24h,7d,30d"
             }
             
             # Preparar headers con API key si está disponible
@@ -165,14 +166,28 @@ class CryptoCollector(BaseCollector):
                 else:
                     crypto.last_updated = timestamp
                 
-                # Crear el registro de precio
+                # Crear el registro de precio con datos adicionales
                 price = CryptoPrice(
                     cryptocurrency_id=crypto.id,
                     timestamp=timestamp,
                     price_usd=coin["current_price"],
                     market_cap_usd=coin.get("market_cap"),
                     volume_24h_usd=coin.get("total_volume"),
-                    percent_change_24h=coin.get("price_change_percentage_24h")
+                    percent_change_24h=coin.get("price_change_percentage_24h"),
+                    # Datos adicionales para análisis financiero
+                    percent_change_7d=coin.get("price_change_percentage_7d_in_currency"),
+                    percent_change_30d=coin.get("price_change_percentage_30d_in_currency"),
+                    circulating_supply=coin.get("circulating_supply"),
+                    total_supply=coin.get("total_supply"),
+                    max_supply=coin.get("max_supply"),
+                    ath_price=coin.get("ath"),
+                    ath_date=datetime.fromisoformat(coin.get("ath_date").replace("Z", "+00:00")) if coin.get("ath_date") else None,
+                    atl_price=coin.get("atl"),
+                    atl_date=datetime.fromisoformat(coin.get("atl_date").replace("Z", "+00:00")) if coin.get("atl_date") else None,
+                    high_24h=coin.get("high_24h"),
+                    low_24h=coin.get("low_24h"),
+                    market_cap_rank=coin.get("market_cap_rank"),
+                    fully_diluted_valuation=coin.get("fully_diluted_valuation")
                 )
                 db.add(price)
                 count += 1
@@ -203,7 +218,7 @@ class CryptoCollector(BaseCollector):
     
     async def collect_historical(self, symbol: str, from_timestamp: int, to_timestamp: int) -> Dict[str, Any]:
         """
-        Recolecta datos históricos de una criptomoneda específica.
+        Recopila datos históricos de una criptomoneda.
         
         Args:
             symbol: Símbolo de la criptomoneda.
@@ -215,85 +230,105 @@ class CryptoCollector(BaseCollector):
         """
         self.logger.info(f"Recolectando datos históricos para {symbol}...")
         
-        try:
-            # Obtener el ID correcto de CoinGecko
-            if symbol.upper() in self.symbol_to_id:
-                coin_id = self.symbol_to_id[symbol.upper()]
-            else:
-                # Si no hay mapeo, usar el símbolo en minúsculas como fallback
-                self.logger.warning(f"No se encontró mapeo para {symbol}, usando el símbolo en minúsculas")
-                coin_id = symbol.lower()
-            
-            # Construir URL
-            url = f"{self.base_url}/coins/{coin_id}/market_chart/range"
-            params = {
-                "vs_currency": "usd",
-                "from": from_timestamp // 1000,  # CoinGecko usa segundos, no milisegundos
-                "to": to_timestamp // 1000
-            }
-            
-            # Preparar headers con API key si está disponible
-            headers = {}
-            if self.api_key:
-                headers["x-cg-api-key"] = self.api_key
-            
-            # Respetar el límite de tasa antes de hacer la solicitud
-            await self._respect_rate_limit()
-            
-            # Realizar la solicitud HTTP
-            self.logger.info(f"URL: {url}")
-            self.logger.info(f"Params: {params}")
-            self.logger.info(f"Headers: {headers}")
-            response = requests.get(url, params=params, headers=headers)
-            
-            # Imprimir información de la respuesta
-            self.logger.info(f"Status Code: {response.status_code}")
-            
-            # Si hay un error, imprimir el contenido de la respuesta
-            if response.status_code >= 400:
-                self.logger.error(f"Error response: {response.text}")
+        # Obtener el ID correcto de CoinGecko
+        if symbol.upper() in self.symbol_to_id:
+            coin_id = self.symbol_to_id[symbol.upper()]
+        else:
+            # Si no hay mapeo, usar el símbolo en minúsculas como fallback
+            self.logger.warning(f"No se encontró mapeo para {symbol}, usando el símbolo en minúsculas")
+            coin_id = symbol.lower()
+        
+        # Construir URL
+        url = f"{self.base_url}/coins/{coin_id}/market_chart/range"
+        params = {
+            "vs_currency": "usd",
+            "from": from_timestamp // 1000,  # CoinGecko usa segundos, no milisegundos
+            "to": to_timestamp // 1000
+        }
+        
+        # Preparar headers con API key si está disponible
+        headers = {}
+        if self.api_key:
+            headers["x-cg-api-key"] = self.api_key
+        
+        # Configuración para reintentos
+        max_retries = 5
+        retry_count = 0
+        base_delay = 5  # segundos
+        
+        while retry_count <= max_retries:
+            try:
+                # Respetar el límite de tasa antes de hacer la solicitud
+                await self._respect_rate_limit()
                 
-            response.raise_for_status()  # Lanzar excepción si hay error HTTP
-            
-            # Procesar la respuesta
-            data = response.json()
-            
-            if 'prices' not in data:
-                self.logger.warning(f"No se encontraron datos de precios para {symbol}")
-                return {}
-            
-            # Obtener precios, market_cap y volumen
-            prices = data.get('prices', [])
-            market_caps = data.get('market_caps', [])
-            volumes = data.get('total_volumes', [])
-            
-            # Asegurarse de que todos los arrays tengan la misma longitud
-            min_length = min(len(prices), len(market_caps), len(volumes))
-            
-            result = {
-                "symbol": symbol,
-                "data": []
-            }
-            
-            for i in range(min_length):
-                timestamp = prices[i][0]  # El timestamp está en milisegundos
-                price = prices[i][1]
-                market_cap = market_caps[i][1] if i < len(market_caps) else None
-                volume = volumes[i][1] if i < len(volumes) else None
+                # Realizar la solicitud HTTP
+                self.logger.info(f"URL: {url}")
+                self.logger.info(f"Params: {params}")
+                self.logger.info(f"Headers: {headers}")
                 
-                result["data"].append({
-                    "timestamp": timestamp,
-                    "price": price,
-                    "market_cap": market_cap,
-                    "volume": volume
-                })
-            
-            self.logger.info(f"Se obtuvieron {len(result['data'])} puntos de datos históricos para {symbol}")
-            return result
-            
-        except requests.exceptions.RequestException as e:
-            self.logger.error(f"Error al obtener datos históricos para {symbol}: {str(e)}")
-            return {}
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url, params=params, headers=headers) as response:
+                        self.logger.info(f"Status Code: {response.status}")
+                        
+                        # Si recibimos un error 429 (Too Many Requests), reintentamos
+                        if response.status == 429:
+                            retry_count += 1
+                            if retry_count > max_retries:
+                                self.logger.error(f"Máximo de reintentos alcanzado para {symbol}")
+                                return {"data": []}
+                            
+                            # Calcular tiempo de espera con backoff exponencial
+                            wait_time = base_delay * (2 ** retry_count)
+                            self.logger.warning(f"Error 429 - Rate limit excedido. Reintentando en {wait_time} segundos (intento {retry_count}/{max_retries})")
+                            await asyncio.sleep(wait_time)
+                            continue
+                        
+                        if response.status == 200:
+                            data = await response.json()
+                            
+                            # Procesar los datos históricos
+                            prices = data.get("prices", [])
+                            market_caps = data.get("market_caps", [])
+                            total_volumes = data.get("total_volumes", [])
+                            
+                            # Organizar los datos por timestamp
+                            historical_data = []
+                            for i, price_data in enumerate(prices):
+                                timestamp = price_data[0]  # timestamp en milisegundos
+                                price = price_data[1]
+                                
+                                # Obtener market cap y volumen si están disponibles
+                                market_cap = market_caps[i][1] if i < len(market_caps) else None
+                                volume = total_volumes[i][1] if i < len(total_volumes) else None
+                                
+                                historical_data.append({
+                                    "timestamp": timestamp,
+                                    "price": price,
+                                    "market_cap": market_cap,
+                                    "volume": volume
+                                })
+                            
+                            self.logger.info(f"Se obtuvieron {len(historical_data)} puntos de datos históricos para {symbol}")
+                            return {"data": historical_data}
+                        else:
+                            error_text = await response.text()
+                            self.logger.error(f"Error response: {error_text}")
+                            response.raise_for_status()
+                            return {"data": []}
+                            
+            except Exception as e:
+                self.logger.error(f"Error al obtener datos históricos para {symbol}: {str(e)}")
+                retry_count += 1
+                if retry_count > max_retries:
+                    self.logger.error(f"Máximo de reintentos alcanzado para {symbol} después de error: {str(e)}")
+                    return {"data": []}
+                
+                # Calcular tiempo de espera con backoff exponencial para otros errores
+                wait_time = base_delay * (2 ** retry_count)
+                self.logger.warning(f"Error al obtener datos. Reintentando en {wait_time} segundos (intento {retry_count}/{max_retries})")
+                await asyncio.sleep(wait_time)
+        
+        return {"data": []}
     
     async def get_latest_prices(self) -> Dict[str, Any]:
         """

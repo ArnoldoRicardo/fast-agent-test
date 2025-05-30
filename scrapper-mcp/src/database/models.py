@@ -39,6 +39,21 @@ class CryptoPrice(Base):
     volume_24h_usd = Column(Float)
     percent_change_24h = Column(Float)
     
+    # Campos adicionales para análisis financiero más completo
+    percent_change_7d = Column(Float)
+    percent_change_30d = Column(Float)
+    circulating_supply = Column(Float)
+    total_supply = Column(Float)
+    max_supply = Column(Float)
+    ath_price = Column(Float)  # All-Time High
+    ath_date = Column(DateTime)
+    atl_price = Column(Float)  # All-Time Low
+    atl_date = Column(DateTime)
+    high_24h = Column(Float)
+    low_24h = Column(Float)
+    market_cap_rank = Column(Integer)
+    fully_diluted_valuation = Column(Float)
+    
     # Relación con la criptomoneda
     cryptocurrency = relationship("CryptoCurrency", back_populates="prices")
     
