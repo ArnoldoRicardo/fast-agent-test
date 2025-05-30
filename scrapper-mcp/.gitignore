@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.pytest_cache/
+
+# SQLite
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# Environment variables
+.env
+
+# Cache
+.cache/
+.requests_cache/
+
+# Data
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
