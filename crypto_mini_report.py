@@ -1,9 +1,7 @@
 import asyncio
 from datetime import datetime
-import json
 
 from mcp_agent.core.fastagent import FastAgent
-from telegram_notifier import send_telegram_message, send_crypto_summary
 
 # Create the application
 fast = FastAgent("Crypto Mini Report")
