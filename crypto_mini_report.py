@@ -1,8 +1,9 @@
 import asyncio
 from datetime import datetime
+import json
 
 from mcp_agent.core.fastagent import FastAgent
-from telegram_notifier import send_telegram_message
+from telegram_notifier import send_telegram_message, send_crypto_summary
 
 # Create the application
 fast = FastAgent("Crypto Mini Report")
@@ -60,20 +61,35 @@ async def main() -> None:
         # Solicitar el informe al agente
         report = await agent.crypto_mini_report.send("Generar informe técnico de criptomonedas con análisis de indicadores")
 
-        raw_data, reporte_filtered = report.split("""}
-*""")
+        # Separar el JSON del informe markdown
 
-        # save in file
-        with open(f"crypto_mini_report_{today}.md", "w") as f:
+        string_magic = """}
+*"""
+
+        if string_magic in report:
+            raw_data, reporte_filtered = report.split(string_magic)
+        else:
+            reporte_filtered = report
+            raw_data = ""
+
+        # Nombres de archivos
+        report_filename = f"crypto_mini_report_{today}.md"
+        raw_data_filename = f"crypto_mini_report_{today}_raw_data.json"
+
+        # Guardar el informe formateado
+        with open(report_filename, "w") as f:
             f.write(reporte_filtered)
+        print(f"Informe guardado en {report_filename}")
 
-        # save raw data
-        with open(f"crypto_mini_report_{today}_raw_data.json", "w") as f:
+        # Guardar los datos crudos
+        with open(raw_data_filename, "w") as f:
             f.write(raw_data)
+        print(f"Datos crudos guardados en {raw_data_filename}")
 
-        # Enviar el informe por Telegram
-        # response = send_telegram_message(report)
-        # print(response)
+        # Enviar resumen por Telegram
+        print("Enviando resumen por Telegram...")
+        response = send_telegram_message(report)
+        print(response)
 
 
 if __name__ == "__main__":

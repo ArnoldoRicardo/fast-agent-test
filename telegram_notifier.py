@@ -5,44 +5,63 @@ from dotenv import load_dotenv
 # Cargar variables de entorno
 load_dotenv()
 
-TOKEN_BOT = os.environ.get("TOKEN_TELEGRAM_BOT")
+# Obtener token del bot desde variables de entorno
+TOKEN = os.getenv("TOKEN_TELEGRAM_BOT")
+# Obtener chat_id desde variables de entorno (opcional)
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+
+# URL base para la API de Telegram
+BASE_URL = f"https://api.telegram.org/bot{TOKEN}/"
 
 
-def send_telegram_message(mensaje, chat_id='None'):
-    """Envía un mensaje a un chat de Telegram.
-
-    Args:
-        mensaje (str): El mensaje a enviar
-        chat_id (str, optional): ID del chat o nombre de usuario. Por defecto '@arlf0'.
+def get_updates():
+    """Obtiene las actualizaciones recientes del bot.
 
     Returns:
         dict: Respuesta de la API de Telegram en formato JSON
     """
-    if not TOKEN_BOT:
-        print("Error: No se ha configurado TOKEN_TELEGRAM_BOT en las variables de entorno")
-        return {"ok": False, "error": "No se ha configurado TOKEN_TELEGRAM_BOT"}
+    if not TOKEN:
+        return {"ok": False, "error": "No se ha configurado el token del bot."}
 
-    # Si no se proporciona chat_id, intentar obtenerlo de las variables de entorno
-    if not chat_id:
-        chat_id = os.environ.get("TELEGRAM_CHAT_ID", "1375768405")
-        print(f"Usando chat_id: {chat_id}")
-
-    url = f"https://api.telegram.org/bot{TOKEN_BOT}/sendMessage"
-    data = {
-        "chat_id": chat_id,
-        "text": mensaje,
-        "parse_mode": "Markdown"  # Permite formato markdown en el mensaje
-    }
+    url = f"{BASE_URL}getUpdates"
 
     try:
-        response = requests.post(url, data=data)
+        response = requests.get(url)
         return response.json()
     except Exception as e:
-        print(f"Error al enviar mensaje a Telegram: {e}")
         return {"ok": False, "error": str(e)}
 
 
-if __name__ == "__main__":
-    print("Enviando mensaje de prueba a Telegram...")
-    result = send_telegram_message("Hola, este es un mensaje de prueba")
-    print(result)
+def send_telegram_message(message, chat_id=None):
+    """Envía un mensaje a un chat de Telegram.
+
+    Args:
+        message (str): Mensaje a enviar.
+        chat_id (str, optional): ID del chat o nombre de usuario.
+
+    Returns:
+        dict: Respuesta de la API de Telegram en formato JSON
+    """
+    if not TOKEN:
+        return {"ok": False, "error": "No se ha configurado el token del bot."}
+
+    # Usar chat_id proporcionado o el de las variables de entorno
+    target_chat_id = chat_id or CHAT_ID
+    if not target_chat_id:
+        return {"ok": False, "error": "No se ha proporcionado un chat_id."}
+
+    # URL para enviar mensajes
+    url = f"{BASE_URL}sendMessage"
+
+    # Parámetros del mensaje
+    params = {
+        "chat_id": target_chat_id,
+        "text": message,
+        "parse_mode": "Markdown"
+    }
+
+    try:
+        response = requests.post(url, json=params)
+        return response.json()
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
