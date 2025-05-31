@@ -3,10 +3,14 @@ Script para probar manualmente la ingesta de datos de criptomonedas.
 Permite recopilar datos actuales o históricos en un marco de tiempo específico.
 """
 
+from src.utils.config import get_config
+from src.utils.logging import get_logger
+from src.database.models import CryptoCurrency, CryptoPrice
+from src.database.connection import init_db, get_db
+from src.collectors.crypto import CryptoCollector
 import asyncio
 import argparse
 import sys
-import requests
 from pathlib import Path
 from datetime import datetime, timedelta
 
@@ -14,11 +18,6 @@ from datetime import datetime, timedelta
 ROOT_DIR = Path(__file__).parent.parent  # Ajustado para que apunte al directorio raíz desde scripts/
 sys.path.insert(0, str(ROOT_DIR))
 
-from src.collectors.crypto import CryptoCollector
-from src.database.connection import init_db, get_db
-from src.database.models import CryptoCurrency, CryptoPrice
-from src.utils.logging import get_logger
-from src.utils.config import get_config
 
 # Inicializar logger y configuración
 logger = get_logger("crypto_collector")
@@ -70,14 +69,15 @@ async def collect_historical_data(days=30, interval="daily"):
 
     # Obtener la fecha de fin (fecha actual)
     end_date = datetime.utcnow()
-    
+
     # Verificar si se especificó un máximo de días por intervalo
     max_days_per_interval = min(days, 90)  # Máximo 90 días por intervalo (límite de CoinGecko)
-    
+
     # Calcular cuántos intervalos necesitamos
     total_intervals = (days + max_days_per_interval - 1) // max_days_per_interval
-    
-    logger.info(f"Recolectando datos históricos en {total_intervals} intervalos de máximo {max_days_per_interval} días cada uno")
+
+    logger.info(
+        f"Recolectando datos históricos en {total_intervals} intervalos de máximo {max_days_per_interval} días cada uno")
 
     # Inicializar contador de éxitos
     success_count = 0
@@ -87,34 +87,35 @@ async def collect_historical_data(days=30, interval="daily"):
     for symbol in symbols:
         symbol_success = True
         symbol_records = 0
-        
+
         # Procesar cada intervalo para este símbolo
         for interval_idx in range(total_intervals):
             # Calcular fechas de inicio y fin para este intervalo
             interval_end = end_date - timedelta(days=interval_idx * max_days_per_interval)
             interval_start = interval_end - timedelta(days=max_days_per_interval)
-            
+
             # Convertir a timestamps (milisegundos)
             from_timestamp = int(interval_start.timestamp() * 1000)
             to_timestamp = int(interval_end.timestamp() * 1000)
-            
+
             interval_start_str = interval_start.strftime('%Y-%m-%d')
             interval_end_str = interval_end.strftime('%Y-%m-%d')
-            
-            logger.info(f"Intervalo {interval_idx+1}/{total_intervals} para {symbol}: {interval_start_str} a {interval_end_str}")
-            
+
+            logger.info(
+                f"Intervalo {interval_idx+1}/{total_intervals} para {symbol}: {interval_start_str} a {interval_end_str}")
+
             # Verificar si ya tenemos datos para este intervalo en la base de datos
             db_gen = get_db()
             db = next(db_gen)
             try:
                 # Buscar la criptomoneda
                 crypto = db.query(CryptoCurrency).filter_by(symbol=symbol.upper()).first()
-                
+
                 if crypto:
                     # Verificar si tenemos datos para este intervalo
                     start_datetime = datetime.fromtimestamp(from_timestamp / 1000)
                     end_datetime = datetime.fromtimestamp(to_timestamp / 1000)
-                    
+
                     # Contar cuántos registros tenemos en este intervalo
                     existing_records_count = (
                         db.query(CryptoPrice)
@@ -125,45 +126,49 @@ async def collect_historical_data(days=30, interval="daily"):
                         )
                         .count()
                     )
-                    
+
                     # Si tenemos más de 80% de los datos esperados (aproximadamente un registro por día),
                     # podemos saltarnos este intervalo
                     expected_records = (end_datetime - start_datetime).days
                     if expected_records > 0 and existing_records_count >= expected_records * 0.8:
-                        logger.info(f"Ya tenemos suficientes datos ({existing_records_count}/{expected_records}) para {symbol} en el intervalo {interval_idx+1}. Saltando...")
+                        logger.info(
+                            f"Ya tenemos suficientes datos ({existing_records_count}/{expected_records}) para {symbol} en el intervalo {interval_idx+1}. Saltando...")
                         continue
                     else:
-                        logger.info(f"Datos incompletos ({existing_records_count}/{expected_records}) para {symbol} en el intervalo {interval_idx+1}. Recolectando...")
+                        logger.info(
+                            f"Datos incompletos ({existing_records_count}/{expected_records}) para {symbol} en el intervalo {interval_idx+1}. Recolectando...")
             except Exception as e:
                 logger.error(f"Error al verificar datos existentes: {str(e)}")
             finally:
                 db.close()
-            
+
             try:
                 # Usar el colector para obtener datos históricos para este intervalo
                 result = await collector.collect_historical(symbol, from_timestamp, to_timestamp)
-                
+
                 if not result or "data" not in result or not result["data"]:
                     logger.warning(f"No se encontraron datos históricos para {symbol} en el intervalo {interval_idx+1}")
                     continue
-                
+
                 data_points = result["data"]
-                logger.info(f"Se obtuvieron {len(data_points)} puntos de datos para {symbol} en el intervalo {interval_idx+1}")
-                
+                logger.info(
+                    f"Se obtuvieron {len(data_points)} puntos de datos para {symbol} en el intervalo {interval_idx+1}")
+
                 if data_points:
                     first_date = datetime.fromtimestamp(data_points[0]["timestamp"] / 1000).strftime('%Y-%m-%d')
                     last_date = datetime.fromtimestamp(data_points[-1]["timestamp"] / 1000).strftime('%Y-%m-%d')
                     logger.info(f"Rango de fechas: {first_date} a {last_date}")
-                    logger.info(f"Precio inicial: ${data_points[0]['price']:.2f}, Precio final: ${data_points[-1]['price']:.2f}")
-                    
+                    logger.info(
+                        f"Precio inicial: ${data_points[0]['price']:.2f}, Precio final: ${data_points[-1]['price']:.2f}")
+
                     # Obtener la sesión de la base de datos
                     db_gen = get_db()
                     db = next(db_gen)
-                    
+
                     try:
                         # Buscar o crear la criptomoneda
                         crypto = db.query(CryptoCurrency).filter_by(symbol=symbol.upper()).first()
-                        
+
                         if not crypto:
                             # Si no existe, crear un nuevo registro
                             crypto = CryptoCurrency(
@@ -174,20 +179,20 @@ async def collect_historical_data(days=30, interval="daily"):
                             )
                             db.add(crypto)
                             db.flush()
-                        
+
                         # Almacenar cada punto de datos
                         stored_count = 0
                         for point in data_points:
                             # Convertir timestamp de milisegundos a datetime
                             timestamp = datetime.fromtimestamp(point["timestamp"] / 1000)
-                            
+
                             # Verificar si ya existe un precio para este timestamp
                             existing_price = (
                                 db.query(CryptoPrice)
                                 .filter_by(cryptocurrency_id=crypto.id, timestamp=timestamp)
                                 .first()
                             )
-                            
+
                             if not existing_price:
                                 # Crear nuevo registro de precio
                                 price_record = CryptoPrice(
@@ -200,26 +205,29 @@ async def collect_historical_data(days=30, interval="daily"):
                                 )
                                 db.add(price_record)
                                 stored_count += 1
-                        
+
                         # Commit los cambios
                         db.commit()
-                        logger.info(f"Almacenados {stored_count} registros históricos para {symbol} en el intervalo {interval_idx+1}")
+                        logger.info(
+                            f"Almacenados {stored_count} registros históricos para {symbol} en el intervalo {interval_idx+1}")
                         symbol_records += stored_count
-                        
+
                     except Exception as e:
                         db.rollback()
-                        logger.error(f"Error al almacenar datos históricos para {symbol} en el intervalo {interval_idx+1}: {str(e)}")
+                        logger.error(
+                            f"Error al almacenar datos históricos para {symbol} en el intervalo {interval_idx+1}: {str(e)}")
                         symbol_success = False
                     finally:
                         db.close()
-                
+
                 # Esperar un poco para no sobrecargar la API
                 await asyncio.sleep(1)
-                
+
             except Exception as e:
-                logger.error(f"Error al obtener datos históricos para {symbol} en el intervalo {interval_idx+1}: {str(e)}")
+                logger.error(
+                    f"Error al obtener datos históricos para {symbol} en el intervalo {interval_idx+1}: {str(e)}")
                 symbol_success = False
-        
+
         # Actualizar contadores
         if symbol_success:
             success_count += 1

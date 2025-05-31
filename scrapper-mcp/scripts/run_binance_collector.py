@@ -4,11 +4,11 @@ Script para ejecutar el colector de datos de Binance.
 Recopila datos OHLCV para los pares de criptomonedas configurados.
 """
 
-import os
+from src.database.connection import init_db
+from src.collectors.binance import BinanceCollector
 import sys
 import asyncio
 import logging
-from datetime import datetime
 from pathlib import Path
 
 # Configurar logging
@@ -26,10 +26,7 @@ ROOT_DIR = Path(__file__).parent.parent  # Ajustado para que apunte al directori
 sys.path.insert(0, str(ROOT_DIR))
 
 # Importar el colector y la base de datos
-from src.collectors.binance import BinanceCollector
-from src.database.connection import init_db, get_db
-from src.database.models import Base
-from src.utils.config import get_config
+
 
 async def main():
     """
@@ -37,16 +34,16 @@ async def main():
     """
     # Inicializar la base de datos
     init_db()
-    
+
     # Crear instancia del colector
     collector = BinanceCollector()
-    
+
     try:
         # Ejecutar colector
         logger.info("Iniciando colector de Binance...")
         result = await collector.collect()
         logger.info(f"Colector de Binance completado. Resultados: {result}")
-        
+
         # Almacenar los datos recolectados
         if result:
             logger.info("Almacenando datos en la base de datos...")
