@@ -24,11 +24,12 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 # Base para los modelos
 Base = declarative_base()
 
+
 def get_db():
     """
     Función para obtener una sesión de base de datos.
     Se debe usar como un context manager para asegurar que se cierre correctamente.
-    
+
     Ejemplo:
     ```
     with get_db() as db:
@@ -41,6 +42,7 @@ def get_db():
     finally:
         db.close()
 
+
 def init_db():
     """
     Inicializa la base de datos creando todas las tablas definidas.
@@ -49,4 +51,18 @@ def init_db():
     
     logger.info("Inicializando base de datos...")
     Base.metadata.create_all(bind=engine)
-    logger.info("Base de datos inicializada correctamente")
+    logger.info("Base de datos inicializada correctamente.")
+
+
+def get_connection_string() -> str:
+    """
+    Obtiene la cadena de conexión para SQLAlchemy, adaptada para conexiones asíncronas.
+    
+    Returns:
+        str: Cadena de conexión asíncrona.
+    """
+    # Convertir la URL de SQLite a aiosqlite para soporte asíncrono
+    url = config.database.url
+    if url.startswith('sqlite:'):
+        return url.replace('sqlite:', 'sqlite+aiosqlite:', 1)
+    return url

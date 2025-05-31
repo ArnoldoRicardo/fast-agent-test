@@ -199,3 +199,31 @@ class FixedIncomeYield(Base):
     
     def __repr__(self):
         return f"<FixedIncomeYield(instrument='{self.instrument.name}', timestamp='{self.timestamp}', yield={self.yield_value})>"
+
+
+class OHLCV(Base):
+    """Modelo para almacenar datos de velas japonesas (OHLCV) de criptomonedas."""
+    __tablename__ = "ohlcv"
+    
+    id = Column(Integer, primary_key=True)
+    cryptocurrency_id = Column(Integer, ForeignKey("cryptocurrencies.id"), nullable=False)
+    symbol = Column(String, nullable=False)  # Par de trading (ej. BTC/USDT)
+    timeframe = Column(String, nullable=False)  # Intervalo de tiempo (ej. 1h, 4h, 1d)
+    timestamp = Column(DateTime, nullable=False)
+    open = Column(Float, nullable=False)
+    high = Column(Float, nullable=False)
+    low = Column(Float, nullable=False)
+    close = Column(Float, nullable=False)
+    volume = Column(Float, nullable=False)
+    
+    # Relación con la criptomoneda
+    cryptocurrency = relationship("CryptoCurrency")
+    
+    # Índices para consultas eficientes
+    __table_args__ = (
+        Index("ix_ohlcv_symbol_timeframe_timestamp", "symbol", "timeframe", "timestamp", unique=True),
+        Index("ix_ohlcv_cryptocurrency_id", "cryptocurrency_id"),
+    )
+    
+    def __repr__(self):
+        return f"<OHLCV(symbol='{self.symbol}', timeframe='{self.timeframe}', timestamp='{self.timestamp}')>"

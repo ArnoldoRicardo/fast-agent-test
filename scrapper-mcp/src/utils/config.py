@@ -5,7 +5,7 @@ Carga variables de entorno y proporciona configuraciones predeterminadas.
 
 import os
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import List, Optional
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
@@ -14,6 +14,7 @@ BASE_DIR = Path(__file__).parent.parent.parent
 
 # Cargar variables de entorno desde .env si existe
 load_dotenv(BASE_DIR / ".env")
+
 
 class DatabaseConfig(BaseModel):
     """Configuración de la base de datos."""
@@ -27,17 +28,17 @@ class ScraperConfig(BaseModel):
     crypto_symbols: List[str] = ["BTC", "ETH", "BNB", "SOL", "XRP"]
     crypto_update_minutes: int = 15
     crypto_api_key: Optional[str] = os.getenv("COINGECKO_API_KEY")
-    
+
     # Configuración para acciones y ETFs
     stock_symbols: List[str] = ["SPY", "QQQ", "DIA", "AAPL", "MSFT", "GOOGL", "AMZN"]
     etf_symbols: List[str] = ["SPY", "QQQ", "VTI", "IWM", "EFA"]
     stock_update_minutes: int = 60
     yfinance_api_key: Optional[str] = os.getenv("YFINANCE_API_KEY")
-    
+
     # Configuración para datos macroeconómicos
     macro_update_hours: int = 24
     fred_api_key: Optional[str] = os.getenv("FRED_API_KEY")
-    
+
     # Configuración para tasa fija
     fixed_income_update_hours: int = 24
 
