@@ -10,7 +10,7 @@ pydantic==2.6.1
 # Scraping y recopilación de datos
 requests==2.31.0
 requests-cache==1.1.1
-aiohttp==3.9.3
+aiohttp==3.13.4
 beautifulsoup4==4.12.2
 yfinance==0.2.35
 python-binance==1.0.19
